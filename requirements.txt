@@ -6,4 +6,6 @@ catboost
 scikit-learn
 streamlit
 requests
+tabulate
+
 
