@@ -84,30 +84,59 @@ def add_features(df):
 
 def train_model(df):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
-    X, y = df[features], df['target']
-    if y.value_counts().min() < 10:
-        return None, 0
-    df_1 = df[df['target'] == 1]
-    df_0 = df[df['target'] == 0]
-    df_bal = pd.concat([
-        resample(df_1, replace=True, n_samples=min(len(df_1), len(df_0)), random_state=42),
-        resample(df_0, replace=True, n_samples=min(len(df_1), len(df_0)), random_state=42)
-    ]).sample(frac=1, random_state=42)
-    X_bal, y_bal = df_bal[features], df_bal['target']
+    X = df[features]
+    y = df['target']
 
+    if X.empty or y.empty or y.value_counts().min() < 10:
+        print("[INFO] Skipping model training due to insufficient data.")
+        return None, 0
+
+    df_combined = pd.concat([X, y], axis=1)
+    df_1 = df_combined[df_combined['target'] == 1]
+    df_0 = df_combined[df_combined['target'] == 0]
+
+    # Balance the dataset
+    min_len = min(len(df_1), len(df_0))
+    if min_len < 10:
+        print("[INFO] Not enough samples for balancing.")
+        return None, 0
+
+    df_balanced = pd.concat([
+        resample(df_1, replace=True, n_samples=min_len, random_state=42),
+        resample(df_0, replace=True, n_samples=min_len, random_state=42)
+    ])
+    df_balanced = df_balanced.sample(frac=1, random_state=42)
+
+    X = df_balanced[features]
+    y = df_balanced['target']
+
+    tscv = TimeSeriesSplit(n_splits=3)
     acc_scores = []
-    tscv = TimeSeriesSplit(n_splits=5)
-    for train_idx, test_idx in tscv.split(X_bal):
-        X_train, X_test = X_bal.iloc[train_idx], X_bal.iloc[test_idx]
-        y_train, y_test = y_bal.iloc[train_idx], y_bal.iloc[test_idx]
-        model = XGBClassifier(n_estimators=150, max_depth=4, learning_rate=0.05, use_label_encoder=False, eval_metric='logloss')
+
+    for train_idx, test_idx in tscv.split(X):
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+        if len(X_train) == 0 or len(y_train) == 0:
+            print("[INFO] Empty training split, skipping this fold.")
+            continue
+
+        model = XGBClassifier(n_estimators=150, max_depth=4, learning_rate=0.05,
+                              use_label_encoder=False, eval_metric='logloss', verbosity=0)
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
         acc_scores.append(accuracy_score(y_test, preds))
 
-    final_model = XGBClassifier(n_estimators=150, max_depth=4, learning_rate=0.05, use_label_encoder=False, eval_metric='logloss')
-    final_model.fit(X_bal, y_bal)
+    if not acc_scores:
+        print("[INFO] No valid folds to train.")
+        return None, 0
+
+    final_model = XGBClassifier(n_estimators=150, max_depth=4, learning_rate=0.05,
+                                use_label_encoder=False, eval_metric='logloss', verbosity=0)
+    final_model.fit(X, y)
+
     return final_model, np.mean(acc_scores)
+
 
 def predict(df, model, symbol):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
