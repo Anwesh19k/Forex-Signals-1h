@@ -122,6 +122,19 @@ def train_ensemble_model(df):
     final_ensemble = VotingClassifier(estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)], voting='soft')
     final_ensemble.fit(X_scaled, y)
     return final_ensemble, np.mean(acc_scores), scaler
+def get_feature_importance(model, features):
+    importance_dict = {}
+    for name, estimator in model.named_estimators_.items():
+        try:
+            importance = estimator.feature_importances_
+            importance_dict[name] = pd.DataFrame({
+                'Feature': features,
+                'Importance': importance
+            }).sort_values(by='Importance', ascending=False).head(3)
+        except:
+            continue
+    return importance_dict
+
 
 def predict(df, model, scaler, symbol):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
@@ -130,6 +143,8 @@ def predict(df, model, scaler, symbol):
     X_pred_scaled = pd.DataFrame(scaler.transform(X_pred), columns=features)
     proba = model.predict_proba(X_pred_scaled)[0]
     signal = "BUY 📈" if proba[1] > 0.5 else "SELL 🔉"
+
+    # Confidence rule-based check
     confidence = sum([
         last['ema10'] > last['ma10'],
         last['momentum'] > 0,
@@ -142,6 +157,16 @@ def predict(df, model, scaler, symbol):
     tp = price + 0.0020 if signal == "BUY 📈" else price - 0.0020
     sl = price - 0.0015 if signal == "BUY 📈" else price + 0.0015
 
+    # === Feature Importance (Explainability) ===
+    importances = np.mean([
+        model.named_estimators_['xgb'].feature_importances_,
+        model.named_estimators_['lgbm'].feature_importances_,
+        model.named_estimators_['cat'].get_feature_importance()
+    ], axis=0)
+
+    importance_df = pd.DataFrame({'Feature': features, 'Importance': importances})
+    top_features = ', '.join(importance_df.sort_values(by='Importance', ascending=False).head(3)['Feature'])
+
     return {
         "Symbol": symbol,
         "Signal": signal,
@@ -149,7 +174,8 @@ def predict(df, model, scaler, symbol):
         "RSI": round(last['rsi14'], 1),
         "Confidence": conf_label,
         "Price x100": round(price * MULTIPLIER, 2),
-        "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}"
+        "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}",
+        "Top Features": top_features
     }
 
 def run_signal_engine():
@@ -164,6 +190,8 @@ def run_signal_engine():
 
         df = add_features(df)
         model, acc, scaler = train_ensemble_model(df)
+        importance_info = get_feature_importance(model, ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility'])
+
 
         if model is None or scaler is None:
             print(f"⚠️ Skipped {symbol}: Model training failed.")
@@ -173,7 +201,8 @@ def run_signal_engine():
             print(f"⚠️ Skipped {symbol}: Low accuracy ({acc:.2f}).")
             continue
 
-        results.append(predict(df, model, scaler, symbol))
+        results.append(predict(df, model, scaler, symbol, importance_info))
+
 
     if not results:
         print("❌ No signals generated.")
