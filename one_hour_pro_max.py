@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import requests
+import shap
 import datetime
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import TimeSeriesSplit
@@ -120,14 +121,14 @@ def train_ensemble_model(df):
 
     final_ensemble = VotingClassifier(estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)], voting='soft')
     final_ensemble.fit(X_scaled, y)
+    return final_ensemble, np.mean(acc_scores), scaler
 
-    return final_ensemble, np.mean(acc_scores)
-
-def predict(df, model, symbol):
+def predict(df, model, scaler, symbol):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
     last = df.iloc[-1]
     X_pred = df[features].iloc[[-1]]
-    proba = model.predict_proba(X_pred)[0]
+    X_pred_scaled = pd.DataFrame(scaler.transform(X_pred), columns=features)
+    proba = model.predict_proba(X_pred_scaled)[0]
     signal = "BUY 📈" if proba[1] > 0.5 else "SELL 🔉"
     confidence = sum([
         last['ema10'] > last['ma10'],
@@ -162,26 +163,28 @@ def run_signal_engine():
             continue
 
         df = add_features(df)
-        model, acc = train_ensemble_model(df)
+        model, acc, scaler = train_ensemble_model(df)
 
-        if model is None:
-            print(f"⚠️ Skipped {symbol}: Model not trained.")
+        if model is None or scaler is None:
+            print(f"⚠️ Skipped {symbol}: Model training failed.")
             continue
 
         if acc <= 0.7:
             print(f"⚠️ Skipped {symbol}: Low accuracy ({acc:.2f}).")
             continue
 
-        results.append(predict(df, model, symbol))
+        results.append(predict(df, model, scaler, symbol))
 
     if not results:
         print("❌ No signals generated.")
     return pd.DataFrame(results)
 
-# Optional standalone run
+# === RUN ===
 if __name__ == "__main__":
     output = run_signal_engine()
     if not output.empty:
         print(output.to_markdown(index=False))
     else:
+        print("⚠️ No signals generated. Retry later.")
+
         print("⚠️ No signals generated. Retry later.")
