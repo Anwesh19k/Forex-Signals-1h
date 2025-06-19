@@ -15,7 +15,7 @@ API_KEYS = [
 ]
 api_usage_index = 0
 INTERVAL = '1h'
-SYMBOLS = ['EUR/USD', 'USD/JPY', 'GBP/USD', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP']
+SYMBOLS = ['EUR/USD', 'USD/JPY', 'GBP/USD']
 MULTIPLIER = 100
 
 
