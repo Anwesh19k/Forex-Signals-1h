@@ -136,7 +136,7 @@ def get_feature_importance(model, features):
     return importance_dict
 
 
-def predict(df, model, scaler, symbol):
+def predict(df, model, scaler, symbol, importance_info=None):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
     last = df.iloc[-1]
     X_pred = df[features].iloc[[-1]]
@@ -201,7 +201,8 @@ def run_signal_engine():
             print(f"⚠️ Skipped {symbol}: Low accuracy ({acc:.2f}).")
             continue
 
-        results.append(predict(df, model, scaler, symbol, importance_info))
+        results.append(predict(df, model, scaler, symbol))
+
 
 
     if not results:
