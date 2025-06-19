@@ -7,5 +7,5 @@ scikit-learn
 streamlit
 requests
 tabulate
-
+shap
 
