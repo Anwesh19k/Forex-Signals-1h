@@ -95,19 +95,21 @@ def train_ensemble_model(df):
     if y.value_counts().min() < 10:
         return None, 0, None
 
-    # Feature scaling
-    scaler = StandardScaler()
-    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
+df_1 = df[df['target'] == 1]
+df_0 = df[df['target'] == 0]
+min_len = min(len(df_1), len(df_0))
+df_bal = pd.concat([
+    resample(df_1, replace=True, n_samples=min_len, random_state=42),
+    resample(df_0, replace=True, n_samples=min_len, random_state=42)
+]).sample(frac=1).reset_index(drop=True)
 
-    df_1 = df[df['target'] == 1]
-    df_0 = df[df['target'] == 0]
-    min_len = min(len(df_1), len(df_0))
-    df_bal = pd.concat([
-        resample(df_1, replace=True, n_samples=min_len, random_state=42),
-        resample(df_0, replace=True, n_samples=min_len, random_state=42)
-    ]).sample(frac=1)
-    X = X_scaled.loc[df_bal.index]
-    y = df_bal['target']
+X = df_bal[features]
+y = df_bal['target']
+
+# Apply scaling after balancing
+scaler = StandardScaler()
+X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
+
 
     tscv = TimeSeriesSplit(n_splits=3)
     acc_scores = []
@@ -171,25 +173,29 @@ def should_run_now():
     return now.minute >= 55
 
 def run_signal_engine():
-    if not should_run_now():
-        print("⏳ Waiting for HH:55–59 window.")
-        return pd.DataFrame()
-
     results = []
     for symbol in SYMBOLS:
+        print(f"🔄 Fetching data for {symbol}...")
         df = fetch_data(symbol)
+
         if df.empty or len(df) < 100:
+            print(f"⛔ Skipped {symbol}: Not enough data.")
             continue
+
         df = add_features(df)
-        model, acc, explainer = train_ensemble_model(df)
-        if model and acc > 0.7:
-            results.append(predict(df, model, symbol, explainer))
+        model, acc = train_ensemble_model(df)
+
+        if model is None:
+            print(f"⚠️ Skipped {symbol}: Model not trained (data imbalance or CV fail).")
+            continue
+
+        if acc <= 0.7:
+            print(f"⚠️ Skipped {symbol}: Model accuracy too low ({acc:.2f}).")
+            continue
+
+        results.append(predict(df, model, symbol))
+
+    if not results:
+        print("❌ No signals generated.")
     return pd.DataFrame(results)
 
-# RUN
-if __name__ == "__main__":
-    output = run_signal_engine()
-    if not output.empty:
-        print(output.to_markdown(index=False))
-    else:
-        print("⚠️ No signals generated. Retry at HH:55–59.")
