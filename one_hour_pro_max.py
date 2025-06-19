@@ -180,4 +180,5 @@ def run_signal_engine():
 # === RUN ===
 if __name__ == "__main__":
     output = run_signal_engine()
-    print(output.to_markdown(index=False))
+    print(output)
+
