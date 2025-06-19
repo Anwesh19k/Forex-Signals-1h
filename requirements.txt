@@ -1,7 +1,9 @@
-streamlit
 pandas
 numpy
 xgboost
+lightgbm
+catboost
 scikit-learn
-tabulate
+streamlit
 requests
+
