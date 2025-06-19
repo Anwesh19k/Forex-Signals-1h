@@ -6,7 +6,8 @@ from datetime import datetime
 from one_hour import run_signal_engine as run_one_hour
 from one_hour_pro import run_signal_engine as run_one_hour_pro
 from one_hour_pro_plus import run_signal_engine as run_one_hour_pro_plus
-from one_hour_pro_max import run_signal_engine as run_one_hour_pro_max  # Make sure this file exists
+from one_hour_pro_max_ai import run_signal_engine as run_one_hour_pro_max
+
 
 # === CONFIG ===
 st.set_page_config(
@@ -62,7 +63,7 @@ if st.button("🔄 Refresh Dashboards"):
 st.markdown(f"🕒 **Last Refreshed:** `{st.session_state.get('last_refreshed', 'Not yet refreshed')}`")
 
 # === TABS ===
-tab1, tab2, tab3, tab4 = st.tabs(["📘 1 Hour", "📗 Pro", "📙 Pro+", "🚀 Pro Max"])
+tab1, tab2, tab3, tab4 = st.tabs(["📘 1 Hour", "📗 Pro", "📙 Pro+", "🚀 Pro Max with Ai"])
 
 with tab1:
     st.subheader("📘 1 Hour Model (Standard)")
