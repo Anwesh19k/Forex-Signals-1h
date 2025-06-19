@@ -52,28 +52,44 @@ st.title("📊 Forex Signal Dashboard (1H, Pro & Pro+)")
 st.markdown("Get real-time signals from three AI models: **Standard**, **Pro**, and **Pro+**.")
 st.caption("✅ Fully optimized for Desktop and Mobile screens.")
 
-# === REFRESH ===
+# === REFRESH BUTTON ===
 if st.button("🔄 Refresh Dashboards"):
     st.session_state['last_refreshed'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     st.success("🔁 Dashboard refreshed!")
+    st.experimental_rerun()
 
 st.markdown(f"🕒 **Last Refreshed:** `{st.session_state.get('last_refreshed', 'Not yet refreshed')}`")
 
-# === TABS (Mobile/Desktop Friendly) ===
+# === TABS ===
 tab1, tab2, tab3 = st.tabs(["📘 1 Hour Model", "📗 1 Hour Pro", "📙 1 Hour Pro+"])
 
+
 with tab1:
-    df1 = run_one_hour()
-    st.dataframe(df1, use_container_width=True)
+    st.subheader("📘 1 Hour Model (Standard)")
+    with st.spinner("🔄 Running 1 Hour model..."):
+        df1 = run_one_hour()
+    if not df1.empty:
+        st.success(f"✅ {len(df1)} signals generated.")
+        st.dataframe(df1, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
 
 with tab2:
-    df2 = run_one_hour_pro()
-    st.dataframe(df2, use_container_width=True)
+    st.subheader("📗 1 Hour Model (Pro)")
+    with st.spinner("🔄 Running 1 Hour Pro model..."):
+        df2 = run_one_hour_pro()
+    if not df2.empty:
+        st.success(f"✅ {len(df2)} signals generated.")
+        st.dataframe(df2, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
 
 with tab3:
-    df3 = run_one_hour_pro_plus()
-    st.dataframe(df3, use_container_width=True)
-
-        
-
-
+    st.subheader("📙 1 Hour Model (Pro+)")
+    with st.spinner("🔄 Running 1 Hour Pro+ model..."):
+        df3 = run_one_hour_pro_plus()
+    if not df3.empty:
+        st.success(f"✅ {len(df3)} signals generated.")
+        st.dataframe(df3, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
