@@ -5,7 +5,8 @@ from datetime import datetime
 # === IMPORTS ===
 from one_hour import run_signal_engine as run_one_hour
 from one_hour_pro import run_signal_engine as run_one_hour_pro
-from one_hour_pro_plus import run_signal_engine as run_one_hour_pro_plus  # Make sure this exists
+from one_hour_pro_plus import run_signal_engine as run_one_hour_pro_plus
+from one_hour_pro_max import run_signal_engine as run_one_hour_pro_max  # Make sure this file exists
 
 # === CONFIG ===
 st.set_page_config(
@@ -48,8 +49,8 @@ mode = st.sidebar.radio("🌗 Theme Mode", ["Light", "Dark"], index=0)
 set_custom_theme(mode)
 
 # === TITLE ===
-st.title("📊 Forex Signal Dashboard (1H, Pro & Pro+)")
-st.markdown("Get real-time signals from three AI models: **Standard**, **Pro**, and **Pro+**.")
+st.title("📊 Forex Signal Dashboard (1H, Pro, Pro+, and Pro Max)")
+st.markdown("Get real-time signals from four AI models: **Standard**, **Pro**, **Pro+**, and **Pro Max**.")
 st.caption("✅ Fully optimized for Desktop and Mobile screens.")
 
 # === REFRESH BUTTON ===
@@ -58,12 +59,10 @@ if st.button("🔄 Refresh Dashboards"):
     st.success("🔁 Dashboard refreshed!")
     st.rerun()
 
-
 st.markdown(f"🕒 **Last Refreshed:** `{st.session_state.get('last_refreshed', 'Not yet refreshed')}`")
 
 # === TABS ===
-tab1, tab2, tab3 = st.tabs(["📘 1 Hour Model", "📗 1 Hour Pro", "📙 1 Hour Pro+"])
-
+tab1, tab2, tab3, tab4 = st.tabs(["📘 1 Hour", "📗 Pro", "📙 Pro+", "🚀 Pro Max"])
 
 with tab1:
     st.subheader("📘 1 Hour Model (Standard)")
@@ -94,3 +93,14 @@ with tab3:
         st.dataframe(df3, use_container_width=True)
     else:
         st.warning("⚠️ No signals generated or model skipped.")
+
+with tab4:
+    st.subheader("🚀 1 Hour Model (Pro Max Ensemble Voting)")
+    with st.spinner("🔄 Running 1 Hour Pro Max model..."):
+        df4 = run_one_hour_pro_max()
+    if not df4.empty:
+        st.success(f"✅ {len(df4)} signals generated.")
+        st.dataframe(df4, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
+
