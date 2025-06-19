@@ -56,7 +56,8 @@ st.caption("✅ Fully optimized for Desktop and Mobile screens.")
 if st.button("🔄 Refresh Dashboards"):
     st.session_state['last_refreshed'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     st.success("🔁 Dashboard refreshed!")
-    st.experimental_rerun()
+    st.rerun()
+
 
 st.markdown(f"🕒 **Last Refreshed:** `{st.session_state.get('last_refreshed', 'Not yet refreshed')}`")
 
