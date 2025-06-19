@@ -18,7 +18,7 @@ INTERVAL = '1h'
 SYMBOLS = ['EUR/USD', 'USD/JPY', 'GBP/USD', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP']
 MULTIPLIER = 100
 api_usage_index = 0
-_cached_data = {}
+
 
 def get_next_api_key():
     global api_usage_index
