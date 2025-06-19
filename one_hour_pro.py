@@ -27,11 +27,9 @@ def get_next_api_key():
     return key
 
 def fetch_data(symbol):
-    if symbol in _cached_data:
-        return _cached_data[symbol]
     try:
         api_key = get_next_api_key()
-        url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={INTERVAL}&outputsize=300&apikey={api_key}"
+        url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1h&outputsize=300&apikey={api_key}"
         r = requests.get(url, timeout=10)
         data = r.json()
         if "values" not in data:
@@ -39,12 +37,11 @@ def fetch_data(symbol):
         df = pd.DataFrame(data["values"])
         df = df.astype({'open': float, 'high': float, 'low': float, 'close': float})
         df['datetime'] = pd.to_datetime(df['datetime'])
-        df = df.sort_values('datetime')
-        _cached_data[symbol] = df
-        return df
+        return df.sort_values('datetime')
     except Exception as e:
-        print(f"[ERROR] {symbol} - {e}")
+        print(f"[ERROR fetching {symbol}] - {e}")
         return pd.DataFrame()
+
 
 def compute_rsi(series, period=14):
     delta = series.diff()
