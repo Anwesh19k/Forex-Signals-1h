@@ -1,10 +1,14 @@
+
 import pandas as pd
 import numpy as np
 import requests
+import shap
+import datetime
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.utils import resample
 from sklearn.ensemble import VotingClassifier
+from sklearn.preprocessing import StandardScaler
 
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
@@ -21,13 +25,11 @@ SYMBOLS = ['EUR/USD', 'USD/JPY', 'GBP/USD', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZ
 MULTIPLIER = 100
 api_usage_index = 0
 
-
 def get_next_api_key():
     global api_usage_index
     key = API_KEYS[api_usage_index % len(API_KEYS)]
     api_usage_index += 1
     return key
-
 
 def fetch_data(symbol):
     try:
@@ -45,7 +47,6 @@ def fetch_data(symbol):
         print(f"[ERROR fetching {symbol}] - {e}")
         return pd.DataFrame()
 
-
 def compute_rsi(series, period=14):
     delta = series.diff()
     gain = np.where(delta > 0, delta, 0)
@@ -55,14 +56,12 @@ def compute_rsi(series, period=14):
     rs = avg_gain / (avg_loss + 1e-6)
     return 100 - (100 / (1 + rs))
 
-
 def compute_macd(df):
     ema12 = df['close'].ewm(span=12).mean()
     ema26 = df['close'].ewm(span=26).mean()
     macd = ema12 - ema26
     signal = macd.ewm(span=9).mean()
     return macd - signal
-
 
 def compute_adx(df, period=14):
     high, low, close = df['high'], df['low'], df['close']
@@ -74,7 +73,6 @@ def compute_adx(df, period=14):
     minus_di = 100 * pd.Series(minus_dm).rolling(window=period).mean() / (atr + 1e-6)
     dx = (abs(plus_di - minus_di) / (plus_di + minus_di + 1e-6)) * 100
     return pd.Series(dx).rolling(window=period).mean()
-
 
 def add_features(df):
     df['ma5'] = df['close'].rolling(5).mean()
@@ -90,14 +88,16 @@ def add_features(df):
     df['target'] = np.where(df['close'].shift(-1) > df['close'], 1, 0)
     return df.dropna()
 
-
 def train_ensemble_model(df):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
     X = df[features]
     y = df['target']
-
     if y.value_counts().min() < 10:
-        return None, 0
+        return None, 0, None
+
+    # Feature scaling
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
 
     df_1 = df[df['target'] == 1]
     df_0 = df[df['target'] == 0]
@@ -106,37 +106,31 @@ def train_ensemble_model(df):
         resample(df_1, replace=True, n_samples=min_len, random_state=42),
         resample(df_0, replace=True, n_samples=min_len, random_state=42)
     ]).sample(frac=1)
-
-    X, y = df_bal[features], df_bal['target']
+    X = X_scaled.loc[df_bal.index]
+    y = df_bal['target']
 
     tscv = TimeSeriesSplit(n_splits=3)
     acc_scores = []
+
+    xgb = XGBClassifier(n_estimators=100, max_depth=4, learning_rate=0.05, use_label_encoder=False, eval_metric='logloss', verbosity=0)
+    lgbm = LGBMClassifier(n_estimators=100, max_depth=4, learning_rate=0.05, verbosity=-1)
+    cat = CatBoostClassifier(iterations=100, depth=4, learning_rate=0.05, verbose=0)
 
     for train_idx, test_idx in tscv.split(X):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-        xgb = XGBClassifier(n_estimators=100, max_depth=4, learning_rate=0.05, use_label_encoder=False, eval_metric='logloss', verbosity=0)
-        lgbm = LGBMClassifier(n_estimators=100, max_depth=4, learning_rate=0.05, verbosity=-1)
-        cat = CatBoostClassifier(iterations=100, depth=4, learning_rate=0.05, verbose=0)
-
-        ensemble = VotingClassifier(
-            estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)],
-            voting='soft'
-        )
+        ensemble = VotingClassifier(estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)], voting='soft')
         ensemble.fit(X_train, y_train)
         preds = ensemble.predict(X_test)
         acc_scores.append(accuracy_score(y_test, preds))
 
-    final_ensemble = VotingClassifier(
-        estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)],
-        voting='soft'
-    )
+    final_ensemble = VotingClassifier(estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)], voting='soft')
     final_ensemble.fit(X, y)
-    return final_ensemble, np.mean(acc_scores)
+    explainer = shap.TreeExplainer(final_ensemble.estimators_[0])
+    return final_ensemble, np.mean(acc_scores), explainer
 
-
-def predict(df, model, symbol):
+def predict(df, model, symbol, explainer):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
     last = df.iloc[-1]
     X_pred = df[features].iloc[[-1]]
@@ -153,6 +147,14 @@ def predict(df, model, symbol):
     price = round(last['close'], 4)
     tp = price + 0.0020 if signal == "BUY 📈" else price - 0.0020
     sl = price - 0.0015 if signal == "BUY 📈" else price + 0.0015
+
+    # SHAP values (explainability)
+    shap_values = explainer.shap_values(X_pred)
+    importance = pd.DataFrame({
+        "Feature": features,
+        "SHAP Value": shap_values[1][0] if isinstance(shap_values, list) else shap_values[0]
+    }).sort_values(by="SHAP Value", ascending=False).head(3)
+
     return {
         "Symbol": symbol,
         "Signal": signal,
@@ -160,25 +162,34 @@ def predict(df, model, symbol):
         "RSI": round(last['rsi14'], 1),
         "Confidence": conf_label,
         "Price x100": round(price * MULTIPLIER, 2),
-        "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}"
+        "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}",
+        "Top Features": importance["Feature"].tolist()
     }
 
+def should_run_now():
+    now = datetime.datetime.utcnow()
+    return now.minute >= 55
 
 def run_signal_engine():
+    if not should_run_now():
+        print("⏳ Waiting for HH:55–59 window.")
+        return pd.DataFrame()
+
     results = []
     for symbol in SYMBOLS:
         df = fetch_data(symbol)
         if df.empty or len(df) < 100:
             continue
         df = add_features(df)
-        model, acc = train_ensemble_model(df)
+        model, acc, explainer = train_ensemble_model(df)
         if model and acc > 0.7:
-            results.append(predict(df, model, symbol))
+            results.append(predict(df, model, symbol, explainer))
     return pd.DataFrame(results)
 
-
-# === RUN ===
+# RUN
 if __name__ == "__main__":
     output = run_signal_engine()
-    print(output)
-
+    if not output.empty:
+        print(output.to_markdown(index=False))
+    else:
+        print("⚠️ No signals generated. Retry at HH:55–59.")
