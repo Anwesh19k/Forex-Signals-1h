@@ -1,8 +1,6 @@
-
 import pandas as pd
 import numpy as np
 import requests
-import shap
 import datetime
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import TimeSeriesSplit
@@ -90,26 +88,19 @@ def add_features(df):
 
 def train_ensemble_model(df):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
-    X = df[features]
-    y = df['target']
-    if y.value_counts().min() < 10:
-        return None, 0, None
+    df_1 = df[df['target'] == 1]
+    df_0 = df[df['target'] == 0]
+    min_len = min(len(df_1), len(df_0))
+    df_bal = pd.concat([
+        resample(df_1, replace=True, n_samples=min_len, random_state=42),
+        resample(df_0, replace=True, n_samples=min_len, random_state=42)
+    ]).sample(frac=1).reset_index(drop=True)
 
-df_1 = df[df['target'] == 1]
-df_0 = df[df['target'] == 0]
-min_len = min(len(df_1), len(df_0))
-df_bal = pd.concat([
-    resample(df_1, replace=True, n_samples=min_len, random_state=42),
-    resample(df_0, replace=True, n_samples=min_len, random_state=42)
-]).sample(frac=1).reset_index(drop=True)
+    X = df_bal[features]
+    y = df_bal['target']
 
-X = df_bal[features]
-y = df_bal['target']
-
-# Apply scaling after balancing
-scaler = StandardScaler()
-X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
-
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
 
     tscv = TimeSeriesSplit(n_splits=3)
     acc_scores = []
@@ -118,8 +109,8 @@ X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
     lgbm = LGBMClassifier(n_estimators=100, max_depth=4, learning_rate=0.05, verbosity=-1)
     cat = CatBoostClassifier(iterations=100, depth=4, learning_rate=0.05, verbose=0)
 
-    for train_idx, test_idx in tscv.split(X):
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    for train_idx, test_idx in tscv.split(X_scaled):
+        X_train, X_test = X_scaled.iloc[train_idx], X_scaled.iloc[test_idx]
         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
         ensemble = VotingClassifier(estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)], voting='soft')
@@ -128,11 +119,11 @@ X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=features)
         acc_scores.append(accuracy_score(y_test, preds))
 
     final_ensemble = VotingClassifier(estimators=[('xgb', xgb), ('lgbm', lgbm), ('cat', cat)], voting='soft')
-    final_ensemble.fit(X, y)
-    explainer = shap.TreeExplainer(final_ensemble.estimators_[0])
-    return final_ensemble, np.mean(acc_scores), explainer
+    final_ensemble.fit(X_scaled, y)
 
-def predict(df, model, symbol, explainer):
+    return final_ensemble, np.mean(acc_scores)
+
+def predict(df, model, symbol):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
     last = df.iloc[-1]
     X_pred = df[features].iloc[[-1]]
@@ -150,13 +141,6 @@ def predict(df, model, symbol, explainer):
     tp = price + 0.0020 if signal == "BUY 📈" else price - 0.0020
     sl = price - 0.0015 if signal == "BUY 📈" else price + 0.0015
 
-    # SHAP values (explainability)
-    shap_values = explainer.shap_values(X_pred)
-    importance = pd.DataFrame({
-        "Feature": features,
-        "SHAP Value": shap_values[1][0] if isinstance(shap_values, list) else shap_values[0]
-    }).sort_values(by="SHAP Value", ascending=False).head(3)
-
     return {
         "Symbol": symbol,
         "Signal": signal,
@@ -164,13 +148,8 @@ def predict(df, model, symbol, explainer):
         "RSI": round(last['rsi14'], 1),
         "Confidence": conf_label,
         "Price x100": round(price * MULTIPLIER, 2),
-        "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}",
-        "Top Features": importance["Feature"].tolist()
+        "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}"
     }
-
-def should_run_now():
-    now = datetime.datetime.utcnow()
-    return now.minute >= 55
 
 def run_signal_engine():
     results = []
@@ -186,11 +165,11 @@ def run_signal_engine():
         model, acc = train_ensemble_model(df)
 
         if model is None:
-            print(f"⚠️ Skipped {symbol}: Model not trained (data imbalance or CV fail).")
+            print(f"⚠️ Skipped {symbol}: Model not trained.")
             continue
 
         if acc <= 0.7:
-            print(f"⚠️ Skipped {symbol}: Model accuracy too low ({acc:.2f}).")
+            print(f"⚠️ Skipped {symbol}: Low accuracy ({acc:.2f}).")
             continue
 
         results.append(predict(df, model, symbol))
@@ -199,3 +178,10 @@ def run_signal_engine():
         print("❌ No signals generated.")
     return pd.DataFrame(results)
 
+# Optional standalone run
+if __name__ == "__main__":
+    output = run_signal_engine()
+    if not output.empty:
+        print(output.to_markdown(index=False))
+    else:
+        print("⚠️ No signals generated. Retry later.")
