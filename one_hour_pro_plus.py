@@ -179,6 +179,9 @@ def run_signal_engine():
     return pd.DataFrame(results)
 
 # RUN
-output = run_signal_engine()
-print(output.to_markdown(index=False))
+if __name__ == "__main__":
+    output = run_signal_engine()
+    print(output)  # or comment this if running in Streamlit
+
+
 
