@@ -17,7 +17,10 @@ from catboost import CatBoostClassifier
 API_KEYS = [
     '54a7479bdf2040d3a35d6b3ae6457f9d',
     'd162b35754ca4c54a13ebe7abecab4e0',
-    'a7266b2503fd497496d47527a7e63b5d'
+    'a7266b2503fd497496d47527a7e63b5d',
+    '54a7479bdf2040d3a35d6b3ae6457f9d',
+    '09c09d58ed5e4cf4afd9a9cac8e09b5d',
+    'df00920c02c54a59a426948a47095543'
 ]
 INTERVAL = '1h'
 SYMBOLS = ['EUR/USD', 'USD/JPY', 'GBP/USD', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP']
