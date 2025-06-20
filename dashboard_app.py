@@ -1,89 +1,101 @@
 import dash
-from dash import html, dcc, callback_context
-from dash.dependencies import Input, Output
-import dash_bootstrap_components as dbc
+from dash import dcc, html, Output, Input
 import pandas as pd
 from datetime import datetime, timedelta
-import time
+import dash_bootstrap_components as dbc
 
-# === IMPORT YOUR MODELS ===
+# === Your signal engine imports ===
 from one_hour import run_signal_engine as run_one_hour
 from one_hour_pro import run_signal_engine as run_one_hour_pro
 from one_hour_pro_plus import run_signal_engine as run_one_hour_pro_plus
 from one_hour_pro_max_ai import run_signal_engine as run_one_hour_pro_max
 
-# === Initialize App ===
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])  # Dark theme
+# === Initialize the Dash app ===
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 app.title = "Forex Signal Dashboard"
-
-# === Timer Function ===
-def get_time_remaining():
-    now = datetime.utcnow()
-    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    remaining = next_hour - now
-    return str(remaining).split('.')[0], 3600 - remaining.seconds
+server = app.server  # for Railway deployment
 
 # === Layout ===
 app.layout = dbc.Container([
-    html.H2("📊 Forex Signal Dashboard (1H, Pro, Pro+, Pro Max AI)", className="text-center mt-4"),
+    html.H2("📊 Forex Signal Dashboard (1H, Pro, Pro+, Pro Max AI)", className="text-center my-3"),
 
-    html.Div(id='live-timer', className='text-center text-warning mb-3'),
+    html.H4(id="live-timer", className="text-center text-warning mb-4"),
 
-    dcc.Interval(id="interval-component", interval=1*1000, n_intervals=0),  # 1 second interval
+    dcc.Interval(id="timer-interval", interval=1000, n_intervals=0),
 
-    dcc.Tabs(id="tabs", value='tab1', children=[
-        dcc.Tab(label='📘 1 Hour', value='tab1'),
-        dcc.Tab(label='📗 Pro', value='tab2'),
-        dcc.Tab(label='📙 Pro+', value='tab3'),
-        dcc.Tab(label='🚀 Pro Max AI', value='tab4'),
-    ]),
+    dbc.Tabs([
+        dbc.Tab(label="📘 1 Hour", tab_id="tab1"),
+        dbc.Tab(label="📗 Pro", tab_id="tab2"),
+        dbc.Tab(label="📙 Pro+", tab_id="tab3"),
+        dbc.Tab(label="🚀 Pro Max AI", tab_id="tab4"),
+    ], id="tabs", active_tab="tab1", className="mb-4"),
 
-    html.Div(id='tab-content')
+    html.Div(id="tab-content")
 ], fluid=True)
 
-# === Callbacks ===
 
+# === Timer Update Function ===
 @app.callback(
-    Output('live-timer', 'children'),
-    Input('interval-component', 'n_intervals')
+    Output("live-timer", "children"),
+    Input("timer-interval", "n_intervals")
 )
-def update_timer(n):
-    countdown, elapsed = get_time_remaining()
-    if elapsed <= 5:  # Auto refresh dashboards at start of hour
-        return f"⏳ Time until next 1H candle: {countdown} – Refreshing dashboards..."
-    return f"⏳ Time until next 1H candle: {countdown}"
+def update_countdown(n):
+    now = datetime.utcnow()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    remaining = next_hour - now
+    seconds = remaining.total_seconds()
+    minutes, secs = divmod(int(seconds), 60)
+    return f"🕒 Time Left for Next 1H Candle: {minutes:02}:{secs:02}"
 
+
+# === Dashboard Auto-Refresh at HH:00 ===
 @app.callback(
-    Output('tab-content', 'children'),
-    Input('tabs', 'value'),
-    Input('interval-component', 'n_intervals')
+    Output("tab-content", "children"),
+    Input("tabs", "active_tab"),
+    Input("timer-interval", "n_intervals")
 )
-def update_tab(tab, n):
-    countdown, elapsed = get_time_remaining()
-    refresh = elapsed <= 5
+def render_tab(tab, n):
+    # Auto-refresh every HH:00:05
+    now = datetime.utcnow()
+    auto_refresh = (now.minute == 0 and now.second <= 5)
 
-    if tab == 'tab1':
-        df = run_one_hour() if refresh else pd.DataFrame()
-        return generate_table(df, "1 Hour Model")
-    elif tab == 'tab2':
-        df = run_one_hour_pro() if refresh else pd.DataFrame()
-        return generate_table(df, "1 Hour Pro Model")
-    elif tab == 'tab3':
-        df = run_one_hour_pro_plus() if refresh else pd.DataFrame()
-        return generate_table(df, "1 Hour Pro+ Model")
-    elif tab == 'tab4':
-        df = run_one_hour_pro_max() if refresh else pd.DataFrame()
-        return generate_table(df, "Pro Max AI Model")
+    if tab == "tab1":
+        df = run_one_hour() if auto_refresh else pd.DataFrame()
+        return generate_table(df, "📘 1 Hour Model (Standard)")
 
-# === Helper function to create data table ===
-def generate_table(df, model_name):
+    elif tab == "tab2":
+        df = run_one_hour_pro() if auto_refresh else pd.DataFrame()
+        return generate_table(df, "📗 1 Hour Model (Pro)")
+
+    elif tab == "tab3":
+        df = run_one_hour_pro_plus() if auto_refresh else pd.DataFrame()
+        return generate_table(df, "📙 1 Hour Model (Pro+)")
+
+    elif tab == "tab4":
+        df = run_one_hour_pro_max() if auto_refresh else pd.DataFrame()
+        return generate_table(df, "🚀 1 Hour Model (Pro Max AI)")
+
+    return "No tab selected."
+
+
+# === Helper to Render Table ===
+def generate_table(df, header):
     if df.empty:
-        return dbc.Alert(f"No signals generated yet for {model_name}.", color="warning", className="m-3")
+        return html.Div([
+            html.H5(header, className="text-info"),
+            html.Div("⚠️ No signals generated or model skipped.", className="text-warning")
+        ])
     else:
         return html.Div([
-            html.H4(f"{model_name} Signals", className="text-info mt-3"),
-            dbc.Table.from_dataframe(df, striped=True, bordered=True, hover=True, className="mt-2"),
+            html.H5(header, className="text-success"),
+            dbc.Table.from_dataframe(df, striped=True, bordered=True, hover=True, responsive=True, className="mt-2")
         ])
+
+
+# === Run App ===
+if __name__ == '__main__':
+    app.run_server(debug=True)
+
 
 # === Run the app ===
 if __name__ == '__main__':
