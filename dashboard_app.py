@@ -1,98 +1,144 @@
-import dash
-from dash import dcc, html, Output, Input
+import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-import dash_bootstrap_components as dbc
 
-# === Your signal engine imports ===
+# === IMPORTS ===
 from one_hour import run_signal_engine as run_one_hour
 from one_hour_pro import run_signal_engine as run_one_hour_pro
 from one_hour_pro_plus import run_signal_engine as run_one_hour_pro_plus
 from one_hour_pro_max_ai import run_signal_engine as run_one_hour_pro_max
 
-# === Initialize the Dash app ===
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
-app.title = "Forex Signal Dashboard"
-server = app.server  # for Railway deployment
-
-# === Layout ===
-app.layout = dbc.Container([
-    html.H2("📊 Forex Signal Dashboard (1H, Pro, Pro+, Pro Max AI)", className="text-center my-3"),
-
-    html.H4(id="live-timer", className="text-center text-warning mb-4"),
-
-    dcc.Interval(id="timer-interval", interval=1000, n_intervals=0),
-
-    dbc.Tabs([
-        dbc.Tab(label="📘 1 Hour", tab_id="tab1"),
-        dbc.Tab(label="📗 Pro", tab_id="tab2"),
-        dbc.Tab(label="📙 Pro+", tab_id="tab3"),
-        dbc.Tab(label="🚀 Pro Max AI", tab_id="tab4"),
-    ], id="tabs", active_tab="tab1", className="mb-4"),
-
-    html.Div(id="tab-content")
-], fluid=True)
-
-
-# === Timer Update Function ===
-@app.callback(
-    Output("live-timer", "children"),
-    Input("timer-interval", "n_intervals")
+# === CONFIG ===
+st.set_page_config(
+    page_title="Forex Signal Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-def update_countdown(n):
+# === LIVE CANDLE COUNTDOWN ===
+def time_until_next_hour():
     now = datetime.utcnow()
     next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     remaining = next_hour - now
-    seconds = remaining.total_seconds()
-    minutes, secs = divmod(int(seconds), 60)
-    return f"🕒 Time Left for Next 1H Candle: {minutes:02}:{secs:02}"
+    return str(remaining).split('.')[0]
 
+def show_live_timer():
+    timer_placeholder = st.empty()
+    while True:
+        countdown = time_until_next_hour()
+        timer_placeholder.markdown(f"### 🕒 Time until next 1H Candle: {countdown}")
+        time.sleep(1)
 
-# === Dashboard Auto-Refresh at HH:00 ===
-@app.callback(
-    Output("tab-content", "children"),
-    Input("tabs", "active_tab"),
-    Input("timer-interval", "n_intervals")
-)
-def render_tab(tab, n):
-    # Auto-refresh every HH:00:05
-    now = datetime.utcnow()
-    auto_refresh = (now.minute == 0 and now.second <= 5)
+# === Start the live timer in a separate thread ===
+import threading
+timer_thread = threading.Thread(target=show_live_timer)
+timer_thread.start()
 
-    if tab == "tab1":
-        df = run_one_hour() if auto_refresh else pd.DataFrame()
-        return generate_table(df, "📘 1 Hour Model (Standard)")
-
-    elif tab == "tab2":
-        df = run_one_hour_pro() if auto_refresh else pd.DataFrame()
-        return generate_table(df, "📗 1 Hour Model (Pro)")
-
-    elif tab == "tab3":
-        df = run_one_hour_pro_plus() if auto_refresh else pd.DataFrame()
-        return generate_table(df, "📙 1 Hour Model (Pro+)")
-
-    elif tab == "tab4":
-        df = run_one_hour_pro_max() if auto_refresh else pd.DataFrame()
-        return generate_table(df, "🚀 1 Hour Model (Pro Max AI)")
-
-    return "No tab selected."
-
-
-# === Helper to Render Table ===
-def generate_table(df, header):
-    if df.empty:
-        return html.Div([
-            html.H5(header, className="text-info"),
-            html.Div("⚠️ No signals generated or model skipped.", className="text-warning")
-        ])
+# === THEME CSS ===
+def set_custom_theme(mode):
+    if mode == "Dark":
+        st.markdown("""
+            <style>
+                body {
+                    background-color: #0e1117;
+                    color: #FFFFFF;
+                }
+                .stDataFrame thead tr th {
+                    color: #FFFFFF;
+                    background-color: #1c1c1c;
+                }
+                .stDataFrame tbody tr td {
+                    background-color: #1c1c1c;
+                    color: #FFFFFF;
+                }
+            </style>
+        """, unsafe_allow_html=True)
     else:
-        return html.Div([
-            html.H5(header, className="text-success"),
-            dbc.Table.from_dataframe(df, striped=True, bordered=True, hover=True, responsive=True, className="mt-2")
-        ])
+        st.markdown("""
+            <style>
+                .stDataFrame tbody tr td {
+                    background-color: #FAFAFA;
+                    color: #000000;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+# === Countdown to Next Hour ===
+def time_until_next_hour():
+    now = datetime.utcnow()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    return next_hour - now
 
+time_remaining = time_until_next_hour()
+minutes, seconds = divmod(time_remaining.seconds, 60)
+progress = (3600 - time_remaining.seconds) / 3600
 
-# === Run App ===
-if __name__ == '__main__':
-    app.run(debug=True)
+st.sidebar.markdown("⏳ **Next Candle Countdown**")
+st.sidebar.markdown(f"🕒 **{minutes:02}:{seconds:02}** remaining to next HH:00 candle")
+st.sidebar.progress(progress)
 
+# === Auto Refresh exactly at HH:00 ===
+now = datetime.utcnow()
+if now.minute == 0 and now.second <= 5:
+    st.experimental_rerun()
+# === TITLE ===
+st.title("📊 Forex Signal Dashboard (1H, Pro, Pro+, and Pro Max)")
+st.markdown("Get real-time signals from four AI models: **Standard**, **Pro**, **Pro+**, and **Pro Max**.")
+st.caption("✅ Fully optimized for Desktop and Mobile screens.")
+
+# === TABS ===
+tab1, tab2, tab3, tab4 = st.tabs(["📘 1 Hour", "📗 Pro", "📙 Pro+", "🚀 Pro Max with AI"])
+
+with tab1:
+    st.subheader("📘 1 Hour Model (Standard)")
+    if st.button("🔄 Refresh 1H Model"):
+        with st.spinner("🔄 Running 1 Hour model..."):
+            st.session_state['df1'] = run_one_hour()
+            st.session_state['last_refreshed_1'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    df1 = st.session_state.get('df1', pd.DataFrame())
+    if not df1.empty:
+        st.success(f"✅ {len(df1)} signals generated.")
+        st.dataframe(df1, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
+    st.markdown(f"🕒 **Last Refreshed (1H):** {st.session_state.get('last_refreshed_1', 'Not yet refreshed')}")
+
+with tab2:
+    st.subheader("📗 1 Hour Model (Pro)")
+    if st.button("🔄 Refresh Pro Model"):
+        with st.spinner("🔄 Running 1 Hour Pro model..."):
+            st.session_state['df2'] = run_one_hour_pro()
+            st.session_state['last_refreshed_2'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    df2 = st.session_state.get('df2', pd.DataFrame())
+    if not df2.empty:
+        st.success(f"✅ {len(df2)} signals generated.")
+        st.dataframe(df2, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
+    st.markdown(f"🕒 **Last Refreshed (Pro):** {st.session_state.get('last_refreshed_2', 'Not yet refreshed')}")
+
+with tab3:
+    st.subheader("📙 1 Hour Model (Pro+)")
+    if st.button("🔄 Refresh Pro+ Model"):
+        with st.spinner("🔄 Running 1 Hour Pro+ model..."):
+            st.session_state['df3'] = run_one_hour_pro_plus()
+            st.session_state['last_refreshed_3'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    df3 = st.session_state.get('df3', pd.DataFrame())
+    if not df3.empty:
+        st.success(f"✅ {len(df3)} signals generated.")
+        st.dataframe(df3, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
+    st.markdown(f"🕒 **Last Refreshed (Pro+):** {st.session_state.get('last_refreshed_3', 'Not yet refreshed')}")
+
+with tab4:
+    st.subheader("🚀 1 Hour Model (Pro Max Ensemble Voting)")
+    if st.button("🔄 Refresh Pro Max AI"):
+        with st.spinner("🔄 Running 1 Hour Pro Max model..."):
+            st.session_state['df4'] = run_one_hour_pro_max()
+            st.session_state['last_refreshed_4'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    df4 = st.session_state.get('df4', pd.DataFrame())
+    if not df4.empty:
+        st.success(f"✅ {len(df4)} signals generated.")
+        st.dataframe(df4, use_container_width=True)
+    else:
+        st.warning("⚠️ No signals generated or model skipped.")
+    st.markdown(f"🕒 **Last Refreshed (Pro Max):** {st.session_state.get('last_refreshed_4', 'Not yet refreshed')}")
