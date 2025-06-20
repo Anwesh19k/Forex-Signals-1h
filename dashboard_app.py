@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import time
 from datetime import datetime, timedelta
-import threading
 
 # === IMPORTS ===
 from one_hour import run_signal_engine as run_one_hour
@@ -11,16 +9,36 @@ from one_hour_pro_plus import run_signal_engine as run_one_hour_pro_plus
 from one_hour_pro_max_ai import run_signal_engine as run_one_hour_pro_max
 
 # === CONFIG ===
-st.set_page_config(page_title="Forex Signal Dashboard", layout="wide")
+st.set_page_config(
+    page_title="Forex Signal Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+# === LIVE CANDLE COUNTDOWN ===
+def time_until_next_hour():
+    now = datetime.utcnow()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    remaining = next_hour - now
+    return str(remaining).split('.')[0]
 
-# === THEME TOGGLE ===
-theme_toggle = st.toggle("🌗 Toggle Dark Mode", value=False)
+def show_live_timer():
+    timer_placeholder = st.empty()
+    while True:
+        countdown = time_until_next_hour()
+        timer_placeholder.markdown(f"### 🕒 Time until next 1H Candle: {countdown}")
+        time.sleep(1)
 
+# === Start the live timer in a separate thread ===
+import threading
+timer_thread = threading.Thread(target=show_live_timer)
+timer_thread.start()
+
+# === THEME CSS ===
 def set_custom_theme(mode):
     if mode == "Dark":
         st.markdown("""
             <style>
-                body, .stApp {
+                body {
                     background-color: #0e1117;
                     color: #FFFFFF;
                 }
@@ -43,40 +61,31 @@ def set_custom_theme(mode):
                 }
             </style>
         """, unsafe_allow_html=True)
-
-set_custom_theme("Dark" if theme_toggle else "Light")
-
-# === LIVE COUNTDOWN TIMER (TOP RIGHT) ===
+# === Countdown to Next Hour ===
 def time_until_next_hour():
     now = datetime.utcnow()
     next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     return next_hour - now
 
-timer_placeholder = st.empty()
+time_remaining = time_until_next_hour()
+minutes, seconds = divmod(time_remaining.seconds, 60)
+progress = (3600 - time_remaining.seconds) / 3600
 
-def run_timer():
-    while True:
-        remaining = time_until_next_hour()
-        minutes, seconds = divmod(remaining.seconds, 60)
-        timer_placeholder.markdown(
-            f"<div style='text-align:right'><strong>🕒 Next 1H Candle In:</strong> {minutes:02}:{seconds:02}</div>",
-            unsafe_allow_html=True
-        )
-        time.sleep(1)
+st.sidebar.markdown("⏳ **Next Candle Countdown**")
+st.sidebar.markdown(f"🕒 **{minutes:02}:{seconds:02}** remaining to next HH:00 candle")
+st.sidebar.progress(progress)
 
-threading.Thread(target=run_timer, daemon=True).start()
-
-# === AUTO REFRESH AT EXACT HH:00 ===
+# === Auto Refresh exactly at HH:00 ===
 now = datetime.utcnow()
 if now.minute == 0 and now.second <= 5:
     st.experimental_rerun()
+# === TITLE ===
+st.title("📊 Forex Signal Dashboard (1H, Pro, Pro+, and Pro Max)")
+st.markdown("Get real-time signals from four AI models: **Standard**, **Pro**, **Pro+**, and **Pro Max**.")
+st.caption("✅ Fully optimized for Desktop and Mobile screens.")
 
-# === DASHBOARD TITLE ===
-st.title("📊 Forex Signal Dashboard (1H, Pro, Pro+, and Pro Max AI)")
-st.caption("✅ Fully optimized for Desktop and Mobile. Auto-refreshes every hour.")
-
-# === DASHBOARD TABS ===
-tab1, tab2, tab3, tab4 = st.tabs(["📘 1 Hour", "📗 Pro", "📙 Pro+", "🚀 Pro Max AI"])
+# === TABS ===
+tab1, tab2, tab3, tab4 = st.tabs(["📘 1 Hour", "📗 Pro", "📙 Pro+", "🚀 Pro Max with AI"])
 
 with tab1:
     st.subheader("📘 1 Hour Model (Standard)")
@@ -90,7 +99,7 @@ with tab1:
         st.dataframe(df1, use_container_width=True)
     else:
         st.warning("⚠️ No signals generated or model skipped.")
-    st.markdown(f"🕒 **Last Refreshed (1H):** `{st.session_state.get('last_refreshed_1', 'Not yet refreshed')}`")
+    st.markdown(f"🕒 **Last Refreshed (1H):** {st.session_state.get('last_refreshed_1', 'Not yet refreshed')}")
 
 with tab2:
     st.subheader("📗 1 Hour Model (Pro)")
@@ -104,7 +113,7 @@ with tab2:
         st.dataframe(df2, use_container_width=True)
     else:
         st.warning("⚠️ No signals generated or model skipped.")
-    st.markdown(f"🕒 **Last Refreshed (Pro):** `{st.session_state.get('last_refreshed_2', 'Not yet refreshed')}`")
+    st.markdown(f"🕒 **Last Refreshed (Pro):** {st.session_state.get('last_refreshed_2', 'Not yet refreshed')}")
 
 with tab3:
     st.subheader("📙 1 Hour Model (Pro+)")
@@ -118,7 +127,7 @@ with tab3:
         st.dataframe(df3, use_container_width=True)
     else:
         st.warning("⚠️ No signals generated or model skipped.")
-    st.markdown(f"🕒 **Last Refreshed (Pro+):** `{st.session_state.get('last_refreshed_3', 'Not yet refreshed')}`")
+    st.markdown(f"🕒 **Last Refreshed (Pro+):** {st.session_state.get('last_refreshed_3', 'Not yet refreshed')}")
 
 with tab4:
     st.subheader("🚀 1 Hour Model (Pro Max Ensemble Voting)")
@@ -132,6 +141,6 @@ with tab4:
         st.dataframe(df4, use_container_width=True)
     else:
         st.warning("⚠️ No signals generated or model skipped.")
-    st.markdown(f"🕒 **Last Refreshed (Pro Max):** `{st.session_state.get('last_refreshed_4', 'Not yet refreshed')}`")
+    st.markdown(f"🕒 **Last Refreshed (Pro Max):** {st.session_state.get('last_refreshed_4', 'Not yet refreshed')}")
 
 
