@@ -125,10 +125,15 @@ def train_ensemble_model(df):
     final_ensemble.fit(X_scaled, y)
     return final_ensemble, np.mean(acc_scores), scaler
 
-def predict(df, model, scaler, symbol):
+def predict(df, model, scaler, symbol, importance_info=None):
     features = ['ma5', 'ma10', 'ema10', 'rsi14', 'momentum', 'macd', 'adx', 'bb_upper', 'bb_lower', 'volatility']
-    last = df.iloc[-1]
-    X_pred = df[features].iloc[[-1]]
+    
+    # Use 2nd last row instead of last to prevent stale TP hits
+    if len(df) < 2:
+        return None
+    
+    last = df.iloc[-2]  # <<< change here
+    X_pred = df[features].iloc[[-2]]  # <<< change here
     X_pred_scaled = pd.DataFrame(scaler.transform(X_pred), columns=features)
     proba = model.predict_proba(X_pred_scaled)[0]
     signal = "BUY 📈" if proba[1] > 0.5 else "SELL 🔉"
@@ -145,10 +150,10 @@ def predict(df, model, scaler, symbol):
     tp = price + 0.0020 if signal == "BUY 📈" else price - 0.0020
     sl = price - 0.0015 if signal == "BUY 📈" else price + 0.0015
 
+    # Feature importance
     importances = np.mean([
         model.named_estimators_['xgb'].feature_importances_,
-        model.named_estimators_['lgbm'].feature_importances_,
-        model.named_estimators_['cat'].get_feature_importance()
+        model.named_estimators_['lgbm'].feature_importances_
     ], axis=0)
 
     importance_df = pd.DataFrame({'Feature': features, 'Importance': importances})
@@ -164,6 +169,7 @@ def predict(df, model, scaler, symbol):
         "Plan": f"{price} / TP: {round(tp, 4)} / SL: {round(sl, 4)}",
         "Top Features": top_features
     }
+
 
 def run_signal_engine():
     results = []
